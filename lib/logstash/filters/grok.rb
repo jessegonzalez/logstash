@@ -149,6 +149,12 @@ class LogStash::Filters::Grok < LogStash::Filters::Base
   def filter(event)
     return unless filter?(event)
 
+    # Only filter events we are configured for
+    if @type != event.type
+        @logger.debug("Skipping grok for event type=#{event.type} (wanted '#{@type}')")
+        return
+    end
+
     # parse it with grok
     matched = false
 
