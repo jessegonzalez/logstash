@@ -9,10 +9,10 @@ require "logstash/outputs/base"
 #   uses for its client. Currently we use elasticsearch 0.18.7
 #
 # You can learn more about elasticsearch at <http://elasticsearch.org>
-class LogStash::Outputs::ElasticSearch < LogStash::Outputs::Base
+class LogStash::Outputs::ElasticSearchHTTP < LogStash::Outputs::Base
 
-  config_name "elasticsearch"
-  plugin_status "stable"
+  config_name "elasticsearch_http"
+  plugin_status "experimental"
 
   # ElasticSearch server name. This is optional if your server is discoverable.
   config :host, :validate => :string
@@ -37,10 +37,7 @@ class LogStash::Outputs::ElasticSearch < LogStash::Outputs::Base
 
   # The port for ElasticSearch transport to use. This is *not* the ElasticSearch
   # REST API port (normally 9200).
-  config :port, :validate => :number, :default => 9300
-
-  # The name/address of the host to bind to for ElasticSearch clustering
-  config :bind_host, :validate => :string
+  config :port, :validate => :number, :default => 9200
 
   # Run the elasticsearch server embedded in this process.
   # This option is useful if you want to run a single logstash process that
@@ -53,10 +50,14 @@ class LogStash::Outputs::ElasticSearch < LogStash::Outputs::Base
   # default.
   config :embedded_http_port, :validate => :string, :default => "9200-9300"
 
-  # Configure the maximum number of in-flight requests to ElasticSearch.
+  # Set the number of events to queue up before writing to elasticsearch.
   #
-  # Note: This setting may be removed in the future.
-  config :max_inflight_requests, :validate => :number, :default => 50
+  # If this value is set to 1, the normal ['index
+  # api'](http://www.elasticsearch.org/guide/reference/api/index_.html).
+  # Otherwise, the [bulk
+  # api](http://www.elasticsearch.org/guide/reference/api/bulk.html) will
+  # be used.
+  config :flush_size, :validate => :number, :default => 100
 
   public
   def register
@@ -79,33 +80,27 @@ class LogStash::Outputs::ElasticSearch < LogStash::Outputs::Base
                         "'embedded => true' and also set '#{name}'")
           raise "Invalid configuration detected. Please fix."
         end
+        # Force localhost for embedded elasticsearch
+        @host = "localhost"
       end
 
       # Start elasticsearch local.
       start_local_elasticsearch
     end
 
-    require "jruby-elasticsearch"
+    require "ftw" # gem ftw
+    @agent = FTW::Agent.new
 
-    @logger.info("New ElasticSearch output", :cluster => @cluster,
-                 :host => @host, :port => @port, :embedded => @embedded)
-    @pending = []
-    options = {
-      :cluster => @cluster,
-      :host => @host,
-      :port => @port,
-      :bind_host => @bind_host,
-    }
-
-    # TODO(sissel): Support 'transport client'
-    options[:type] = :node
-
-    @client = ElasticSearch::Client.new(options)
-    @inflight_requests = 0
-    @inflight_mutex = Mutex.new
-    @inflight_cv = ConditionVariable.new
-
-    # TODO(sissel): Set up the bulkstream.
+    # TODO(sissel): Implement this model in FTW:
+    #    reader, writer = IO.pipe
+    #    request = agent.post(url, :body => reader)
+    #    agent.execute(request)
+    #    writer.write(body...)
+    #    writer.write(body...)
+    #    writer.write(body...)
+    #    writer.close
+    #    TODO(sissel): How to get the response?
+    @queue = []
   end # def register
 
   protected
@@ -130,56 +125,47 @@ class LogStash::Outputs::ElasticSearch < LogStash::Outputs::Base
     # TODO(sissel): allow specifying the ID?
     # The document ID is how elasticsearch determines sharding hash, so it can
     # help performance if we allow folks to specify a specific ID.
-    # TODO(sissel): Use the bulk index api, but to do this I need to figure out
-    # how to handle indexing errors especially related to part of the full bulk
-    # request. In the mean-time, keep track of the number of outstanding requests
-    # and block if we reach that maximum.
 
-    # If current in-flight requests exceeds max_inflight_requests, block until
-    # it doesn't.
-    @inflight_mutex.synchronize do
-      # Keep blocking until it's safe to send new requests.
-      while @inflight_requests >= @max_inflight_requests
-        @logger.info("Too many active ES requests, blocking now.", 
-                     :inflight_requests => @inflight_requests,
-                     :max_inflight_requests => @max_inflight_requests);
-        @inflight_cv.wait(@inflight_mutex)
-      end
-    end
-
-    req = @client.index(index, type, event.to_hash) 
-    increment_inflight_request_count
-    #timer = @logger.time("elasticsearch write")
-    req.on(:success) do |response|
-      @logger.debug("Successfully indexed", :event => event.to_hash)
-      #timer.stop
-      decrement_inflight_request_count
-    end.on(:failure) do |exception|
-      @logger.warn("Failed to index an event", :exception => exception,
-                    :event => event.to_hash)
-      #timer.stop
-      decrement_inflight_request_count
-    end
-
-    # Execute this request asynchronously.
-    req.execute
+    if @flush_size == 1
+      receive_single(event, index, type)
+    else
+      receive_bulk(event, index, type)
+    end # 
   end # def receive
 
-  # Ruby doesn't appear to have a semaphore implementation, so this is a
-  # hack until I write one.
-  private
-  def increment_inflight_request_count
-    @inflight_mutex.synchronize do
-      @inflight_requests += 1
-      @logger.info("ElasticSearch in-flight requests", :count => @inflight_requests)
-    end
-  end # def increment_inflight_request_count
+  def receive_single(event, index, type)
+    response = @agent.post!("http://#{@host}:#{@port}/#{index}/#{type}",
+                            :body => event.to_json)
+    # We must read the body to free up this connection for reuse.
+    body = "";
+    response.read_body { |chunk| body += chunk }
 
-  private
-  def decrement_inflight_request_count
-    @inflight_mutex.synchronize do
-      @inflight_requests -= 1
-      @inflight_cv.signal
+    if response.status != 201
+      @logger.error("Error writing to elasticsearch",
+                    :response => response, :response_body => body)
     end
-  end # def decrement_inflight_request_count
+  end # def receive_single
+
+  def receive_bulk(event, index, type)
+    @queue << [
+      { "index" => { "_index" => index, "_type" => type } }.to_json,
+      event.to_json
+    ].join("\n")
+    
+    if @queue.size > @flush_size
+      response = @agent.post!("http://#{@host}:#{@port}/_bulk",
+                              :body => @queue.join("\n"))
+      @queue.clear
+
+      # We must read the body to free up this connection for reuse.
+      body = "";
+      response.read_body { |chunk| body += chunk }
+
+      #if response.status != 201
+      if response.status != 200
+        @logger.error("Error writing (bulk) to elasticsearch",
+                      :response => response, :response_body => body)
+      end
+    end
+  end # def receive_bulk
 end # class LogStash::Outputs::Elasticsearch
