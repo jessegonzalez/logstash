@@ -25,7 +25,7 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency "awesome_print" # MIT License
   spec.add_dependency "bunny" # for amqp support, MIT-style license
-  spec.add_dependency "cabin", "0.3.8" # for logging. apache 2 license
+  spec.add_dependency "cabin", "0.4.4" # for logging. apache 2 license
   spec.add_dependency "aws-sdk" # for AWS access: SNS and S3 log tailing.  Apache 2.0 License
   spec.add_dependency "filewatch", "~> 0.3.3"  # for file tailing, BSD License
   spec.add_dependency "gelfd", "~> 0.2.0" #inputs/gelf, # License: Apache 2.0
@@ -33,7 +33,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency "gmetric", "~> 0.1.3" # outputs/ganglia, # License: MIT
   spec.add_dependency "haml" # License: MIT
   spec.add_dependency "jls-grok", "0.10.6" # for grok filter, BSD License
-  spec.add_dependency "jruby-elasticsearch", "~> 0.0.11" # BSD License
+  spec.add_dependency "jruby-elasticsearch", "~> 0.0.13" # BSD License
   spec.add_dependency "jruby-openssl" # For enabling SSL support, CPL/GPL 2.0
   spec.add_dependency "json" # Ruby license
   spec.add_dependency "minitest" # License: Ruby
