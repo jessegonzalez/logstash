@@ -4,7 +4,7 @@
 #   wget
 #
 JRUBY_VERSION=1.6.7
-ELASTICSEARCH_VERSION=0.19.2
+ELASTICSEARCH_VERSION=0.19.4
 JODA_VERSION=2.1
 VERSION=$(shell ruby -r./lib/logstash/version -e 'puts LOGSTASH_VERSION')
 
@@ -179,6 +179,7 @@ build/logstash-$(VERSION)-monolithic.jar: JAR_ARGS+=-C build/monolith .
 build/logstash-$(VERSION)-monolithic.jar: JAR_ARGS+=-C $(VENDOR_DIR) gems
 build/logstash-$(VERSION)-monolithic.jar: JAR_ARGS+=-C $(VENDOR_DIR) specifications
 build/logstash-$(VERSION)-monolithic.jar: JAR_ARGS+=-C lib logstash/web/public
+build/logstash-$(VERSION)-monolithic.jar: JAR_ARGS+=-C lib logstash/certs
 build/logstash-$(VERSION)-monolithic.jar: JAR_ARGS+=-C lib logstash/web/views
 build/logstash-$(VERSION)-monolithic.jar: JAR_ARGS+=patterns
 build/logstash-$(VERSION)-monolithic.jar:

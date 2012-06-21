@@ -34,15 +34,14 @@ class LogStash::Runner
 
     @runners = []
     while !args.empty?
-      $stderr.puts(:args => args)
       args = run(args)
-      $stderr.puts(:remaining => args)
     end
 
-    $stderr.puts :doneargs
-
     status = []
-    @runners.each { |r| @logger.info("Waiting on", :r => r.wait); status << r.wait }
+    @runners.each do |r|
+      $stderr.puts "Waiting on #{r.wait.inspect}"
+      status << r.wait
+    end
 
     # Avoid running test/unit's at_exit crap
     if status.empty?
@@ -86,6 +85,14 @@ class LogStash::Runner
         test = LogStash::Test.new
         @runners << test
         return test.run(args)
+      end,
+      "irb" => lambda do
+        require "irb"
+        return IRB.start(__FILE__)
+      end,
+      "pry" => lambda do
+        require "pry"
+        return binding.pry
       end
     } # commands
 

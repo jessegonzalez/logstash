@@ -8,6 +8,7 @@ require "logstash/multiqueue"
 require "logstash/namespace"
 require "logstash/outputs"
 require "logstash/program"
+require "logstash/threadwatchdog"
 require "logstash/util"
 require "optparse"
 require "thread"
@@ -397,6 +398,7 @@ class LogStash::Agent
       end # @inputs.each
 
       # Create N filter-worker threads
+      @filterworkers = {}
       if @filters.length > 0
         @filters.each do |filter|
           filter.logger = @logger
@@ -405,7 +407,6 @@ class LogStash::Agent
             filter.prepare_metrics
           end
         end
-        @filterworkers = {}
         1.times do |n|
           # TODO(sissel): facter this out into a 'filterworker' that  accepts
           # 'shutdown'
@@ -420,6 +421,13 @@ class LogStash::Agent
           @filterworkers[filterworker] = thread
         end # N.times
       end # if @filters.length > 0
+
+      # A thread to supervise filter workers
+      watchdog = LogStash::ThreadWatchdog.new(@filterworkers.values)
+      watchdog.logger = logger
+      Thread.new do
+        watchdog.watch
+      end
 
       # Create output threads
       @output_plugin_queues = {}

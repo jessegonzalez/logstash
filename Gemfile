@@ -13,6 +13,7 @@ gem "json" # Ruby license
 #gem "awesome_print" # MIT License
 gem "jruby-openssl", :platforms => :jruby # For enabling SSL support, CPL/GPL 2.0
 gem "mail" #outputs/email, # License: MIT License
+gem "xml-simple" # unknown license: http://xml-simple.rubyforge.org/
 
 gem "minitest" # License: Ruby
 gem "rack" # License: MIT
@@ -31,6 +32,7 @@ gem "gmetric", "0.1.3" # outputs/ganglia, # License: MIT
 gem "xmpp4r", "0.5" # outputs/xmpp, # License: As-Is
 gem "gelfd", "0.2.0" #inputs/gelf, # License: Apache 2.0
 gem "jruby-win32ole", :platforms => :jruby # inputs/eventlog, # License: JRuby
+gem "pry"
 
 gem "ffi-rzmq", "0.9.0"
 gem "ffi"
